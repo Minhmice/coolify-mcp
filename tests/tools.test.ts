@@ -430,6 +430,65 @@ test('tools: private application creation exposes credential selectors', async (
     await close();
   }
 });
+test('tools: coolify_create_application accepts and passes buildPack', async () => {
+  let capturedBody: unknown;
+  const { client, close } = await setupClient(async (req) => {
+    const url = new URL(req.url);
+    if (url.pathname === '/api/v1/applications/public' && req.method === 'POST') {
+      capturedBody = await req.json();
+      return Response.json({ uuid: 'app_pub_1' });
+    }
+    return Response.json({ error: 'not found' }, { status: 404 });
+  });
+
+  try {
+    const res = await client.callTool({
+      name: 'coolify_create_application',
+      arguments: {
+        type: 'public',
+        projectUuid: 'proj_1',
+        serverUuid: 'srv_1',
+        gitRepository: 'https://github.com/coollabsio/coolify',
+        buildPack: 'nixpacks',
+      },
+    });
+    assert.equal(res.isError, undefined);
+    const body = capturedBody as Record<string, unknown>;
+    assert.equal(body.build_pack, 'nixpacks');
+  } finally {
+    await close();
+  }
+});
+
+test('tools: coolify_update_application maps fqdn to domains in request body', async () => {
+  let capturedBody: unknown;
+  const { client, close } = await setupClient(async (req) => {
+    const url = new URL(req.url);
+    if (url.pathname === '/api/v1/applications/app_1' && req.method === 'PATCH') {
+      capturedBody = await req.json();
+      return Response.json({ uuid: 'app_1', message: 'updated' });
+    }
+    return Response.json({ error: 'not found' }, { status: 404 });
+  });
+
+  try {
+    const res = await client.callTool({
+      name: 'coolify_update_application',
+      arguments: {
+        resourceUuid: 'app_1',
+        confirmResourceUuid: 'app_1',
+        fqdn: 'https://myapp.example.com',
+      },
+    });
+    assert.equal(res.isError, undefined);
+    const body = capturedBody as Record<string, unknown>;
+    assert.equal(body.domains, 'https://myapp.example.com');
+    assert.equal(body.fqdn, undefined);
+  } finally {
+    await close();
+  }
+});
+
 
 test('tools: redacts token value if echoed in successful response message', async () => {
   const { client, close, config } = await setupClient(async () => {

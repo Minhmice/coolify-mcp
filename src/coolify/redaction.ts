@@ -1,9 +1,11 @@
 const SECRET_KEY_PATTERN = /token|password|secret|private[_-]?key|api[_-]?key|auth|credential/i;
 const COMPOSE_KEY_PATTERN = /(?:docker_)?compose(?:_raw)?/i;
-const BEARER_TOKEN_PATTERN = /Bearer\s+[A-Za-z0-9_\-.~+/]+=*/gi;
+const BEARER_TOKEN_PATTERN = /Bearer\s+[A-Za-z0-9_\-|.~+/]+=*/gi;
+const DB_URL_KEY_PATTERN = /(?:internal|external)_db_url/i;
+const DB_CONNECTION_URL_PATTERN = /([a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^\s/@:]*:)[^\s/@]+(@)/g;
 
 function scrubString(str: string, knownSecrets?: readonly string[]): string {
-  let result = str.replace(BEARER_TOKEN_PATTERN, 'Bearer [REDACTED]');
+  let result = str;
   if (knownSecrets && knownSecrets.length > 0) {
     const validSecrets = knownSecrets
       .filter((s) => typeof s === 'string' && s.trim().length > 0)
@@ -13,6 +15,8 @@ function scrubString(str: string, knownSecrets?: readonly string[]): string {
       result = result.replaceAll(secret, '[REDACTED]');
     }
   }
+  result = result.replace(BEARER_TOKEN_PATTERN, 'Bearer [REDACTED]');
+  result = result.replace(DB_CONNECTION_URL_PATTERN, '$1[REDACTED]$2');
   return result;
 }
 
@@ -52,7 +56,7 @@ export function redactSecrets(value: unknown, knownSecrets?: readonly string[]):
       result[k] = redactSecrets(v, knownSecrets);
     } else if (isEnvVar && (k === 'value' || k === 'real_value')) {
       result[k] = '[REDACTED]';
-    } else if (SECRET_KEY_PATTERN.test(k) || COMPOSE_KEY_PATTERN.test(k)) {
+    } else if (SECRET_KEY_PATTERN.test(k) || COMPOSE_KEY_PATTERN.test(k) || DB_URL_KEY_PATTERN.test(k)) {
       result[k] = '[REDACTED]';
     } else {
       result[k] = redactSecrets(v, knownSecrets);

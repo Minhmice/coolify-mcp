@@ -222,7 +222,7 @@ test('deployments: listDeployments and getDeployment redact secrets in payloads'
     const url = new URL(req.url);
     if (url.pathname === '/api/v1/deployments') {
       return Response.json([
-        { id: 'dep_1', status: 'finished', secret_token: 'secret-val' },
+        { id: 'dep_1', status: 'finished', secret_token: 'secret-val', logs: 'deploy logs' },
       ]);
     }
     if (url.pathname === '/api/v1/deployments/dep_1') {
@@ -239,10 +239,12 @@ test('deployments: listDeployments and getDeployment redact secrets in payloads'
   const list = (await listDeployments(client)) as Array<Record<string, unknown>>;
   assert.equal(list.length, 1);
   assert.equal(list[0]?.secret_token, '[REDACTED]');
+  assert.equal('logs' in (list[0] ?? {}), false);
 
   const dep = (await getDeployment(client, 'dep_1')) as Record<string, unknown>;
   assert.equal(dep.id, 'dep_1');
   assert.equal(dep.private_key, '[REDACTED]');
+  assert.equal('logs' in dep, false);
 });
 
 test('logs: getApplicationLogs requires sensitive opt-in and bounds output size', async () => {

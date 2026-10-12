@@ -58,6 +58,20 @@ export async function createApplication(
   }
 
   const body = toSnakeCaseRecord(rest as Record<string, unknown>);
+  if (type === 'dockerimage') {
+    const raw = rest as Record<string, unknown>;
+    const imageName =
+      raw.docker_registry_image_name ??
+      raw.dockerRegistryImageName ??
+      raw.docker_image ??
+      raw.dockerImage ??
+      raw.image;
+    if (imageName) {
+      body.docker_registry_image_name = imageName;
+    }
+    delete body.docker_image;
+    delete body.image;
+  }
   const data = await client.request('POST', `/applications/${type}`, { body });
   return normalizeOperation(data);
 }
@@ -70,6 +84,10 @@ export async function updateApplication(
   const uuid = assertValidResourceUuid(resourceUuid);
   const validated = updateApplicationSchema.parse(input);
   const body = toSnakeCaseRecord(validated as Record<string, unknown>);
+  if (body.fqdn !== undefined && body.domains === undefined) {
+    body.domains = body.fqdn;
+    delete body.fqdn;
+  }
   const compose = validated.docker_compose_raw ?? validated.dockerComposeRaw;
   const secretValues = compose ? [compose] : undefined;
   const data = await client.request('PATCH', `/applications/${uuid}`, { body, secretValues });

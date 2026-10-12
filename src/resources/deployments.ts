@@ -7,6 +7,16 @@ import {
   assertValidResourceUuid,
   normalizeOperation,
 } from './types.js';
+function stripLogs(value: unknown): unknown {
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(stripLogs);
+  }
+  const { logs: _logs, ...rest } = value as Record<string, unknown>;
+  return rest;
+}
 
 export async function listDeployments(client: Pick<CoolifyClient, 'request'>): Promise<unknown[]> {
   const data = await client.request('GET', '/deployments');
@@ -16,7 +26,8 @@ export async function listDeployments(client: Pick<CoolifyClient, 'request'>): P
       kind: 'validation',
     });
   }
-  return redactSecrets(data) as unknown[];
+  const stripped = data.map(stripLogs);
+  return redactSecrets(stripped) as unknown[];
 }
 
 export async function getDeployment(
@@ -25,7 +36,8 @@ export async function getDeployment(
 ): Promise<unknown> {
   const uuid = assertValidResourceUuid(resourceUuid);
   const data = await client.request('GET', `/deployments/${uuid}`);
-  return redactSecrets(data);
+  const stripped = stripLogs(data);
+  return redactSecrets(stripped);
 }
 
 export async function deployApplication(

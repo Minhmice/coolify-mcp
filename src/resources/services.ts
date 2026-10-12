@@ -33,6 +33,18 @@ export async function getService(
   const data = await client.request('GET', `/services/${uuid}`);
   return normalizeResource(data);
 }
+function isBase64(str: string): boolean {
+  if (typeof str !== 'string' || str.length === 0) return false;
+  const trimmed = str.trim();
+  if (trimmed.length % 4 !== 0) return false;
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(trimmed)) return false;
+  try {
+    const decoded = Buffer.from(trimmed, 'base64').toString('utf8');
+    return Buffer.from(decoded, 'utf8').toString('base64') === trimmed;
+  } catch {
+    return false;
+  }
+}
 
 export async function createService(
   client: Pick<CoolifyClient, 'request'>,
@@ -57,8 +69,16 @@ export async function createService(
 
   const body = toSnakeCaseRecord(validated as Record<string, unknown>);
   const compose = validated.docker_compose_raw ?? validated.dockerComposeRaw;
-  const secretValues = compose ? [compose] : undefined;
-
+  let secretValues: string[] | undefined;
+  if (compose) {
+    if (isBase64(compose)) {
+      const decoded = Buffer.from(compose, 'base64').toString('utf8');
+      secretValues = [decoded, compose];
+    } else {
+      secretValues = [compose];
+      body.docker_compose_raw = Buffer.from(compose, 'utf8').toString('base64');
+    }
+  }
   const data = await client.request('POST', '/services', { body, secretValues });
   return normalizeOperation(data);
 }
@@ -72,8 +92,16 @@ export async function updateService(
   const validated = updateServiceSchema.parse(input);
   const body = toSnakeCaseRecord(validated as Record<string, unknown>);
   const compose = validated.docker_compose_raw ?? validated.dockerComposeRaw;
-  const secretValues = compose ? [compose] : undefined;
-
+  let secretValues: string[] | undefined;
+  if (compose) {
+    if (isBase64(compose)) {
+      const decoded = Buffer.from(compose, 'base64').toString('utf8');
+      secretValues = [decoded, compose];
+    } else {
+      secretValues = [compose];
+      body.docker_compose_raw = Buffer.from(compose, 'utf8').toString('base64');
+    }
+  }
   const data = await client.request('PATCH', `/services/${uuid}`, { body, secretValues });
   return normalizeOperation(data);
 }

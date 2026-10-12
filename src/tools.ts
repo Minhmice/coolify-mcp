@@ -439,7 +439,12 @@ export function registerTools(
     wrapHandler(
       async ({ resourceUuid, confirmResourceUuid, ...rest }) => {
         assertDeleteConfirmation(resourceUuid, confirmResourceUuid);
-        return updateApplication(client, resourceUuid, rest);
+        const { fqdn, ...payload } = rest;
+        const mappedInput = {
+          ...payload,
+          ...(fqdn !== undefined ? { domains: fqdn } : {}),
+        };
+        return updateApplication(client, resourceUuid, mappedInput);
       },
       (args) => (args.dockerComposeRaw ? [args.dockerComposeRaw] : []),
     ),
@@ -520,8 +525,8 @@ export function registerTools(
       environmentName: z.string().optional(),
       name: z.string().optional(),
       description: z.string().optional(),
+      buildPack: z.string().optional().describe('Build pack (e.g. nixpacks, static, dockerfile)'),
       portsExposes: z.string().optional(),
-      gitRepository: z.string().optional(),
       gitBranch: z.string().optional(),
       dockerImage: z.string().optional(),
       dockerfile: z.string().optional(),

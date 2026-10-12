@@ -460,6 +460,47 @@ test('redactSecrets - scrubs Bearer tokens and knownSecrets from strings anywher
   assert.equal(redacted.logLines[1]?.includes(secretB), false);
   assert.ok(redacted.logLines[1]?.includes('[REDACTED]'));
 });
+test('redactSecrets - scrubs Sanctum tokens with pipe and processes knownSecrets first', () => {
+  const token = '123|coolify_sanctum_secret_token_abc';
+  const input = {
+    headerValue: `Bearer ${token}`,
+    otherHeader: 'Bearer 456|another_sanctum_token_xyz',
+    mixed: `Token value is ${token}`,
+  };
+
+  const redacted = redactSecrets(input, [token]) as typeof input;
+  assert.equal(redacted.headerValue.includes('coolify_sanctum_secret_token_abc'), false);
+  assert.equal(redacted.headerValue.includes('123|'), false);
+  assert.equal(redacted.headerValue, 'Bearer [REDACTED]');
+  assert.equal(redacted.otherHeader.includes('456|another_sanctum_token_xyz'), false);
+  assert.equal(redacted.otherHeader, 'Bearer [REDACTED]');
+  assert.equal(redacted.mixed, 'Token value is [REDACTED]');
+});
+
+test('redactSecrets - scrubs credentials from database connection URLs and redacts db_url keys', () => {
+  const input = {
+    directString: 'postgres://postgres:secret-password-123@localhost:5432/my_database',
+    mysqlUrl: 'mysql://root:super_secret_pw!@10.0.0.5:3306/production?ssl=true',
+    redisUrl: 'redis://:redis_secret_pass@cache.internal:6379/0',
+    internal_db_url: 'postgres://postgres:internal_pass@db.internal:5432/main',
+    external_db_url: 'postgres://postgres:external_pass@db.external:5432/main',
+    safeHttpUrl: 'https://example.com/api/test',
+  };
+
+  const redacted = redactSecrets(input) as typeof input;
+  assert.equal(redacted.directString, 'postgres://postgres:[REDACTED]@localhost:5432/my_database');
+  assert.equal(redacted.mysqlUrl, 'mysql://root:[REDACTED]@10.0.0.5:3306/production?ssl=true');
+  assert.equal(redacted.redisUrl, 'redis://:[REDACTED]@cache.internal:6379/0');
+  assert.equal(redacted.internal_db_url, '[REDACTED]');
+  assert.equal(redacted.external_db_url, '[REDACTED]');
+  assert.equal(redacted.safeHttpUrl, 'https://example.com/api/test');
+  assert.equal(JSON.stringify(redacted).includes('secret-password-123'), false);
+  assert.equal(JSON.stringify(redacted).includes('super_secret_pw'), false);
+  assert.equal(JSON.stringify(redacted).includes('redis_secret_pass'), false);
+  assert.equal(JSON.stringify(redacted).includes('internal_pass'), false);
+  assert.equal(JSON.stringify(redacted).includes('external_pass'), false);
+});
+
 
 test('limitText - returns untruncated result when within maxBytes', () => {
   const res = limitText('hello world', 100);

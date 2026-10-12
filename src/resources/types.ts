@@ -154,6 +154,8 @@ export const createDockerImageAppSchema = z.object({
   docker_image: z.string().min(1).optional(),
   dockerImage: z.string().min(1).optional(),
   image: z.string().min(1).optional(),
+  docker_registry_image_name: z.string().min(1).optional(),
+  dockerRegistryImageName: z.string().min(1).optional(),
   ports_exposes: z.string().optional(),
   portsExposes: z.string().optional(),
 });

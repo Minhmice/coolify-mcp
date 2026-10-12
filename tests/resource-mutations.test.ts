@@ -46,7 +46,7 @@ import {
   setApplicationEnvironmentVariable,
   deleteApplicationEnvironmentVariable,
 } from '../src/resources/environment.js';
-
+import { createApplicationSchema } from '../src/resources/types.js';
 function createMockClient(handler: (req: Request) => Promise<Response> | Response) {
   const config = loadConfig({
     COOLIFY_URL: 'https://coolify.example',
@@ -157,6 +157,75 @@ test('createApplication dispatches to /applications/{type} and strips type from 
   assert.equal((capturedBody as Record<string, unknown>).git_repository, 'https://github.com/coollabsio/coolify');
   assert.equal(result.resourceUuid, 'new-app-1');
 });
+test('createApplication maps dockerImage/image to docker_registry_image_name for dockerimage type', async () => {
+  let capturedPath = '';
+  let capturedBody: unknown;
+  const { client } = createMockClient(async (req) => {
+    capturedPath = new URL(req.url).pathname;
+    capturedBody = await req.json();
+    return Response.json({ uuid: 'app-img-1' }, { status: 201 });
+  });
+
+  await createApplication(client, {
+    type: 'dockerimage',
+    project_uuid: 'proj-1',
+    server_uuid: 'srv-1',
+    dockerImage: 'redis:alpine',
+  });
+
+  assert.equal(capturedPath, '/api/v1/applications/dockerimage');
+  const body = capturedBody as Record<string, unknown>;
+  assert.equal(body.docker_registry_image_name, 'redis:alpine');
+  assert.equal(body.docker_image, undefined);
+  assert.equal(body.image, undefined);
+});
+
+test('createApplicationSchema accepts buildPack and build_pack across git variants', () => {
+  const publicWithCamel = createApplicationSchema.parse({
+    type: 'public',
+    projectUuid: 'p1',
+    serverUuid: 's1',
+    buildPack: 'nixpacks',
+  });
+  assert.equal(publicWithCamel.type, 'public');
+  if (publicWithCamel.type === 'public') {
+    assert.equal(publicWithCamel.buildPack, 'nixpacks');
+  }
+
+  const publicWithSnake = createApplicationSchema.parse({
+    type: 'public',
+    projectUuid: 'p1',
+    serverUuid: 's1',
+    build_pack: 'static',
+  });
+  assert.equal(publicWithSnake.type, 'public');
+  if (publicWithSnake.type === 'public') {
+    assert.equal(publicWithSnake.build_pack, 'static');
+  }
+
+  const ghApp = createApplicationSchema.parse({
+    type: 'private-github-app',
+    projectUuid: 'p1',
+    serverUuid: 's1',
+    buildPack: 'dockerfile',
+  });
+  assert.equal(ghApp.type, 'private-github-app');
+  if (ghApp.type === 'private-github-app') {
+    assert.equal(ghApp.buildPack, 'dockerfile');
+  }
+
+  const deployKey = createApplicationSchema.parse({
+    type: 'private-deploy-key',
+    projectUuid: 'p1',
+    serverUuid: 's1',
+    build_pack: 'nixpacks',
+  });
+  assert.equal(deployKey.type, 'private-deploy-key');
+  if (deployKey.type === 'private-deploy-key') {
+    assert.equal(deployKey.build_pack, 'nixpacks');
+  }
+});
+
 
 test('createApplication rejects unsupported application type before network call', async () => {
   let requests = 0;
@@ -311,6 +380,63 @@ test('updateService sends PATCH to /services/{uuid}', async () => {
   assert.deepEqual(capturedBody, { name: 'updated-name' });
   assert.equal(result.resourceUuid, 'srvc-1');
 });
+test('createService encodes unencoded compose to base64 and preserves unencoded in secretValues', async () => {
+  let capturedBody: unknown;
+  const rawCompose = 'services:\n  web:\n    image: nginx\n';
+  const { client } = createMockClient(async (req) => {
+    capturedBody = await req.json();
+    return Response.json({
+      uuid: 'srvc-compose-1',
+      echoed: rawCompose,
+    });
+  });
+
+  const result = await createService(client, {
+    project_uuid: 'proj-1',
+    server_uuid: 'server-1',
+    docker_compose_raw: rawCompose,
+  });
+
+  const body = capturedBody as Record<string, unknown>;
+  assert.equal(body.docker_compose_raw, Buffer.from(rawCompose, 'utf8').toString('base64'));
+  assert.equal(result.resourceUuid, 'srvc-compose-1');
+});
+
+test('createService does not double-encode already base64 compose', async () => {
+  let capturedBody: unknown;
+  const rawCompose = 'services:\n  web:\n    image: nginx\n';
+  const b64 = Buffer.from(rawCompose, 'utf8').toString('base64');
+  const { client } = createMockClient(async (req) => {
+    capturedBody = await req.json();
+    return Response.json({ uuid: 'srvc-compose-2' });
+  });
+
+  await createService(client, {
+    project_uuid: 'proj-1',
+    server_uuid: 'server-1',
+    docker_compose_raw: b64,
+  });
+
+  const body = capturedBody as Record<string, unknown>;
+  assert.equal(body.docker_compose_raw, b64);
+});
+
+test('updateService encodes unencoded compose to base64', async () => {
+  let capturedBody: unknown;
+  const rawCompose = 'services:\n  app:\n    image: node:alpine\n';
+  const { client } = createMockClient(async (req) => {
+    capturedBody = await req.json();
+    return Response.json({ uuid: 'srvc-1' });
+  });
+
+  await updateService(client, 'srvc-1', {
+    dockerComposeRaw: rawCompose,
+  });
+
+  const body = capturedBody as Record<string, unknown>;
+  assert.equal(body.docker_compose_raw, Buffer.from(rawCompose, 'utf8').toString('base64'));
+});
+
 
 test('deleteService enforces confirmation and sends DELETE /services/{uuid}', async () => {
   let requests = 0;
