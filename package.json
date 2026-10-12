@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "Local stdio MCP server for Coolify administration",
   "type": "module",
+  "bin": {
+    "coolify-mcp": "./dist/index.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",

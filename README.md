@@ -7,15 +7,55 @@ Local stdio Model Context Protocol (MCP) server for managing self-hosted Coolify
 - Node.js >= 22.0.0
 - npm >= 10.0.0
 
-## Configuration
+## Installation & Setup
 
-The server is configured via environment variables. Copy `.env.example` to `.env` or set in your MCP client configuration:
+1. Clone and install dependencies:
 
 ```bash
-cp .env.example .env
+git clone https://github.com/Minhmice/coolify-mcp.git
+cd coolify-mcp
+npm install
 ```
 
-### Environment Variables
+2. Build the server:
+
+```bash
+npm run build
+```
+
+3. (Optional) Run tests and typecheck:
+
+```bash
+npm test
+npm run typecheck
+```
+
+## Client Configuration
+
+The server runs over standard I/O (stdio). MCP protocol messages use stdout exclusively; all errors and diagnostics use stderr.
+
+### OMP / Claude Desktop Configuration
+
+Add the server to your MCP client configuration (e.g. `claude_desktop_config.json` or OMP configuration):
+
+```json
+{
+  "mcpServers": {
+    "coolify": {
+      "command": "node",
+      "args": ["/absolute/path/to/coolify-mcp/dist/index.js"],
+      "env": {
+        "COOLIFY_URL": "https://coolify.example.com",
+        "COOLIFY_TOKEN": "<stored-secret>"
+      }
+    }
+  }
+}
+```
+
+Replace `/absolute/path/to/coolify-mcp/dist/index.js` with the absolute path to your compiled entrypoint.
+
+## Environment Variables
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
@@ -25,27 +65,46 @@ cp .env.example .env
 | `COOLIFY_REQUEST_TIMEOUT_MS` | No | `30000` | HTTP request timeout in milliseconds (allowed: 1 – 120,000). |
 | `COOLIFY_MAX_LOG_BYTES` | No | `65536` | Maximum log response size budget in bytes (allowed: 1 – 1,048,576). |
 
-## Development
+A `.env.example` file is provided for local reference with placeholder values:
+
+```bash
+cp .env.example .env
+```
+
+## Permissions & Scope
+
+- **API Token**: Generate a Bearer token in the Coolify dashboard under Keys & Tokens / API tokens. The token requires appropriate permissions (read/write/admin) matching the tools you intend to use.
+- **Team Scope**: Coolify tokens are scoped to the team that created them. All resource operations (projects, applications, databases, services, servers) act strictly within that team's scope.
+- **Token Rotation**: To rotate tokens, generate a new token in Coolify, update the `COOLIFY_TOKEN` environment variable in your client configuration, and restart the client. Revoke the old token in Coolify afterwards.
+
+## Security & Safety
+
+- **HTTPS Only**: Plain HTTP is rejected at startup to guarantee credentials are never transmitted in cleartext.
+- **Secret Redaction**: Sensitive fields—including `COOLIFY_TOKEN`, environment variable values (`value`, `real_value`), Docker Compose secrets, passwords, and API keys—are automatically masked as `[REDACTED]` in tool output, error responses, and stderr logs.
+- **Strict URL Validation**: Base URLs must be root HTTPS origin URLs without userinfo, query parameters, fragments, or path components.
+- **Destructive Operation Confirmation**: Destructive tools (`coolify_delete_application`, `coolify_delete_service`, `coolify_delete_database`, `coolify_delete_project`, `coolify_delete_server`, `coolify_delete_application_environment_variable`) require an explicit confirmation identifier (`confirmResourceUuid`). If the confirmation does not match the target resource ID, execution aborts immediately before any HTTP request is dispatched.
+
+## Supported Coolify API Assumptions
+
+- Built against Coolify v4 REST API (`/api/v1`).
+- Assumes standard REST JSON response formats.
+- Network operations enforce request timeouts (`COOLIFY_REQUEST_TIMEOUT_MS`) and max response size limits.
+
+## Development Commands
 
 ```bash
 # Install dependencies
 npm install
 
-# Run tests
+# Run full test suite
 npm test
 
-# Typecheck
+# Typecheck source and tests
 npm run typecheck
 
-# Build
+# Build TypeScript to dist/
 npm run build
 
-# Start server (after build)
+# Start local stdio server
 npm start
 ```
-
-## Security & Safety
-
-- **HTTPS Only**: Plain HTTP is rejected to ensure tokens are never transmitted in cleartext.
-- **Credential Protection**: API tokens are never echoed in errors, diagnostics, or output logs.
-- **Strict URL Validation**: Base URLs must be root origin URLs without userinfo, query parameters, fragments, or path components.
