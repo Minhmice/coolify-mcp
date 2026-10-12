@@ -1,6 +1,13 @@
 import type { CoolifyClient } from '../coolify/client.js';
 import { CoolifyError } from '../coolify/errors.js';
-import { type ResourceView, assertValidResourceUuid, normalizeResource } from './types.js';
+import { assertDeleteConfirmation } from '../policy.js';
+import {
+  type OperationResult,
+  type ResourceView,
+  assertValidResourceUuid,
+  normalizeOperation,
+  normalizeResource,
+} from './types.js';
 
 export async function listServers(client: Pick<CoolifyClient, 'request'>): Promise<ResourceView[]> {
   const data = await client.request('GET', '/servers');
@@ -20,4 +27,14 @@ export async function getServer(
   const uuid = assertValidResourceUuid(resourceUuid);
   const data = await client.request('GET', `/servers/${uuid}`);
   return normalizeResource(data);
+}
+
+export async function deleteServer(
+  client: Pick<CoolifyClient, 'request'>,
+  resourceUuid: string,
+  confirmResourceUuid: string,
+): Promise<OperationResult> {
+  assertDeleteConfirmation(resourceUuid, confirmResourceUuid);
+  const data = await client.request('DELETE', `/servers/${resourceUuid}`);
+  return normalizeOperation(data);
 }
