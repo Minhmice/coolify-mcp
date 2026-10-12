@@ -1,4 +1,4 @@
-const SECRET_KEY_PATTERN = /token|password|secret|private_key|key|auth|credential/i;
+const SECRET_KEY_PATTERN = /token|password|secret|private[_-]?key|api[_-]?key|auth|credential/i;
 const COMPOSE_KEY_PATTERN = /(?:docker_)?compose(?:_raw)?/i;
 const BEARER_TOKEN_PATTERN = /Bearer\s+[A-Za-z0-9_\-.~+/]+=*/gi;
 
@@ -44,7 +44,7 @@ export function redactSecrets(value: unknown, knownSecrets?: readonly string[]):
   }
 
   const obj = value as Record<string, unknown>;
-  const isEnvVar = 'key' in obj && ('value' in obj || 'real_value' in obj);
+  const isEnvVar = 'key' in obj && ('value' in obj || 'real_value' in obj || 'scope' in obj || 'changed' in obj);
   const result: Record<string, unknown> = {};
 
   for (const [k, v] of Object.entries(obj)) {

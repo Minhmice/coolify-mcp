@@ -153,8 +153,10 @@ test('tools: destructive annotations and confirmation descriptions are exposed',
       'coolify_stop_database',
       'coolify_cancel_deployment',
       'coolify_delete_application_environment_variable',
+      'coolify_update_application',
+      'coolify_update_service',
+      'coolify_update_database',
     ];
-
     for (const name of confirmationRequired) {
       const tool = toolsByName[name];
       assert.ok(tool, `${name} exists`);
@@ -345,7 +347,7 @@ test('tools: delete environment variable requires confirmEnvUuid match', async (
   }
 });
 
-test('tools: error handling returns isError: true and safe message on 404', async () => {
+test('tools: error handling returns isError: true and structured safe payload', async () => {
   const { client, close } = await setupClient(async () => {
     return Response.json({ message: 'Project not found.' }, { status: 404 });
   });
@@ -358,6 +360,93 @@ test('tools: error handling returns isError: true and safe message on 404', asyn
     assert.equal(res.isError, true);
     const text = extractFirstText(res.content);
     assert.match(text, /not found/i);
+    const parsed = JSON.parse(text);
+    assert.equal(parsed.kind, 'not_found');
+    assert.equal(parsed.status, 404);
+  } finally {
+    await close();
+  }
+});
+
+test('tools: update application maps camelCase fields to snake_case in request body', async () => {
+  let capturedBody: unknown;
+  const { client, close } = await setupClient(async (req) => {
+    const url = new URL(req.url);
+    if (url.pathname === '/api/v1/applications/app_1' && req.method === 'PATCH') {
+      capturedBody = await req.json();
+      return Response.json({ message: 'Application updated.' });
+    }
+    return Response.json({ error: 'not found' }, { status: 404 });
+  });
+
+  try {
+    const res = await client.callTool({
+      name: 'coolify_update_application',
+      arguments: {
+        resourceUuid: 'app_1',
+        confirmResourceUuid: 'app_1',
+        buildCommand: 'npm run build',
+        buildPack: 'nixpacks',
+      },
+    });
+    assert.equal(res.isError, undefined);
+    assert.deepEqual(capturedBody, {
+      build_command: 'npm run build',
+      build_pack: 'nixpacks',
+    });
+  } finally {
+    await close();
+  }
+});
+
+test('tools: private application creation exposes credential selectors', async () => {
+  let capturedBody: unknown;
+  const { client, close } = await setupClient(async (req) => {
+    const url = new URL(req.url);
+    if (url.pathname === '/api/v1/applications/private-github-app' && req.method === 'POST') {
+      capturedBody = await req.json();
+      return Response.json({ uuid: 'app_gh_1' });
+    }
+    return Response.json({ error: 'not found' }, { status: 404 });
+  });
+
+  try {
+    const res = await client.callTool({
+      name: 'coolify_create_application',
+      arguments: {
+        type: 'private-github-app',
+        projectUuid: 'proj_1',
+        serverUuid: 'srv_1',
+        githubAppUuid: 'gh_app_123',
+      },
+    });
+    assert.equal(res.isError, undefined);
+    assert.deepEqual(capturedBody, {
+      project_uuid: 'proj_1',
+      server_uuid: 'srv_1',
+      github_app_uuid: 'gh_app_123',
+    });
+  } finally {
+    await close();
+  }
+});
+
+test('tools: redacts token value if echoed in successful response message', async () => {
+  const { client, close, config } = await setupClient(async () => {
+    return Response.json({
+      message: `Deploying with token Bearer ${config.token}`,
+    });
+  });
+
+  try {
+    const res = await client.callTool({
+      name: 'coolify_deploy_application',
+      arguments: { resourceUuid: 'app_1' },
+    });
+    assert.equal(res.isError, undefined);
+    const text = extractFirstText(res.content);
+    assert.equal(text.includes(config.token), false);
+    assert.match(text, /\[REDACTED\]/);
   } finally {
     await close();
   }

@@ -2,6 +2,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { AppConfig } from './config.js';
 import type { CoolifyClient } from './coolify/client.js';
+import { CoolifyError } from './coolify/errors.js';
+import { redactSecrets } from './coolify/redaction.js';
 import { assertDeleteConfirmation } from './policy.js';
 import {
   createApplication,
@@ -59,20 +61,40 @@ import type {
   EnvScope,
 } from './resources/types.js';
 
-function wrapHandler<A, T>(fn: (args: A) => Promise<T>) {
-  return async (args: A) => {
-    try {
-      const result = await fn(args);
-      return {
-        content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-      };
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Tool execution failed';
-      return {
-        isError: true,
-        content: [{ type: 'text' as const, text: message }],
-      };
-    }
+function createToolWrapper(config: AppConfig) {
+  return function wrapHandler<A, T>(
+    fn: (args: A) => Promise<T>,
+    getSecretValues?: (args: A) => string[],
+  ) {
+    return async (args: A) => {
+      try {
+        const result = await fn(args);
+        const secretValues = getSecretValues ? getSecretValues(args) : [];
+        const redacted = redactSecrets(result, [config.token, ...secretValues]);
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(redacted, null, 2) }],
+        };
+      } catch (err: unknown) {
+        if (err instanceof CoolifyError) {
+          const payload: Record<string, unknown> = {
+            message: err.message,
+            kind: err.kind,
+            retryable: err.retryable,
+          };
+          if (err.status !== undefined) payload.status = err.status;
+          if (err.retryAfter !== undefined) payload.retryAfter = err.retryAfter;
+          return {
+            isError: true,
+            content: [{ type: 'text' as const, text: JSON.stringify(payload, null, 2) }],
+          };
+        }
+        const message = err instanceof Error ? err.message : 'Tool execution failed';
+        return {
+          isError: true,
+          content: [{ type: 'text' as const, text: message }],
+        };
+      }
+    };
   };
 }
 
@@ -81,6 +103,7 @@ export function registerTools(
   client: CoolifyClient,
   config: AppConfig,
 ): void {
+  const wrapHandler = createToolWrapper(config);
   // ==========================================
   // READ TOOLS (18)
   // ==========================================
@@ -373,7 +396,10 @@ export function registerTools(
       isLiteral: z.boolean().optional(),
       isMultiline: z.boolean().optional(),
     },
-    wrapHandler(async (args) => setApplicationEnvironmentVariable(client, args)),
+    wrapHandler(
+      async (args) => setApplicationEnvironmentVariable(client, args),
+      (args) => [args.value],
+    ),
   );
 
   server.tool(
@@ -393,9 +419,10 @@ export function registerTools(
 
   server.tool(
     'coolify_update_application',
-    'Update an application configuration in Coolify',
+    'Update an application configuration in Coolify. Requires confirmation by passing confirmResourceUuid matching resourceUuid.',
     {
       resourceUuid: z.string().describe('Application UUID'),
+      confirmResourceUuid: z.string().describe('Must match resourceUuid to confirm updating application configuration'),
       name: z.string().optional(),
       description: z.string().optional(),
       buildPack: z.string().optional(),
@@ -409,34 +436,45 @@ export function registerTools(
       dockerComposeRaw: z.string().optional(),
     },
     { destructiveHint: true },
-    wrapHandler(async ({ resourceUuid, ...rest }) => updateApplication(client, resourceUuid, rest)),
+    wrapHandler(async ({ resourceUuid, confirmResourceUuid, ...rest }) => {
+      assertDeleteConfirmation(resourceUuid, confirmResourceUuid);
+      return updateApplication(client, resourceUuid, rest);
+    }),
   );
 
   server.tool(
     'coolify_update_service',
-    'Update a service configuration in Coolify',
+    'Update a service configuration in Coolify. Requires confirmation by passing confirmResourceUuid matching resourceUuid.',
     {
       resourceUuid: z.string().describe('Service UUID'),
+      confirmResourceUuid: z.string().describe('Must match resourceUuid to confirm updating service configuration'),
       name: z.string().optional(),
       description: z.string().optional(),
       dockerComposeRaw: z.string().optional(),
     },
     { destructiveHint: true },
-    wrapHandler(async ({ resourceUuid, ...rest }) => updateService(client, resourceUuid, rest)),
+    wrapHandler(async ({ resourceUuid, confirmResourceUuid, ...rest }) => {
+      assertDeleteConfirmation(resourceUuid, confirmResourceUuid);
+      return updateService(client, resourceUuid, rest);
+    }),
   );
 
   server.tool(
     'coolify_update_database',
-    'Update a database configuration in Coolify',
+    'Update a database configuration in Coolify. Requires confirmation by passing confirmResourceUuid matching resourceUuid.',
     {
       resourceUuid: z.string().describe('Database UUID'),
+      confirmResourceUuid: z.string().describe('Must match resourceUuid to confirm updating database configuration'),
       name: z.string().optional(),
       description: z.string().optional(),
       isPublic: z.boolean().optional(),
       publicPort: z.number().optional(),
     },
     { destructiveHint: true },
-    wrapHandler(async ({ resourceUuid, ...rest }) => updateDatabase(client, resourceUuid, rest)),
+    wrapHandler(async ({ resourceUuid, confirmResourceUuid, ...rest }) => {
+      assertDeleteConfirmation(resourceUuid, confirmResourceUuid);
+      return updateDatabase(client, resourceUuid, rest);
+    }),
   );
 
   // ==========================================
@@ -481,6 +519,8 @@ export function registerTools(
       gitBranch: z.string().optional(),
       dockerImage: z.string().optional(),
       dockerfile: z.string().optional(),
+      githubAppUuid: z.string().optional().describe('GitHub App UUID (for private-github-app)'),
+      privateKeyUuid: z.string().optional().describe('Private deploy key UUID (for private-deploy-key)'),
     },
     wrapHandler(async (args) => createApplication(client, args as CreateApplicationInput)),
   );
