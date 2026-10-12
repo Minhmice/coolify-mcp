@@ -527,6 +527,7 @@ export function registerTools(
       description: z.string().optional(),
       buildPack: z.string().optional().describe('Build pack (e.g. nixpacks, static, dockerfile)'),
       portsExposes: z.string().optional(),
+      gitRepository: z.string().optional().describe('Git repository URL'),
       gitBranch: z.string().optional(),
       dockerImage: z.string().optional(),
       dockerfile: z.string().optional(),

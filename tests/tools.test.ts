@@ -455,6 +455,7 @@ test('tools: coolify_create_application accepts and passes buildPack', async () 
     assert.equal(res.isError, undefined);
     const body = capturedBody as Record<string, unknown>;
     assert.equal(body.build_pack, 'nixpacks');
+    assert.equal(body.git_repository, 'https://github.com/coollabsio/coolify');
   } finally {
     await close();
   }
