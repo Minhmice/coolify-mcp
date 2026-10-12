@@ -451,3 +451,29 @@ test('tools: redacts token value if echoed in successful response message', asyn
     await close();
   }
 });
+
+test('tools: redacts dockerComposeRaw secrets from updateApplication result echoes and errors', async () => {
+  const sensitiveCompose = 'version: "3"\nservices:\n  db:\n    environment:\n      POSTGRES_PASSWORD: my-super-secret-password-123\n';
+  const { client, close } = await setupClient(async () => {
+    return Response.json({
+      message: `Updated configuration with compose: ${sensitiveCompose}`,
+    });
+  });
+
+  try {
+    const res = await client.callTool({
+      name: 'coolify_update_application',
+      arguments: {
+        resourceUuid: 'app_1',
+        confirmResourceUuid: 'app_1',
+        dockerComposeRaw: sensitiveCompose,
+      },
+    });
+    assert.equal(res.isError, undefined);
+    const text = extractFirstText(res.content);
+    assert.equal(text.includes('my-super-secret-password-123'), false);
+    assert.match(text, /\[REDACTED\]/);
+  } finally {
+    await close();
+  }
+});

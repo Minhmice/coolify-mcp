@@ -70,7 +70,8 @@ export async function updateApplication(
   const uuid = assertValidResourceUuid(resourceUuid);
   const validated = updateApplicationSchema.parse(input);
   const body = toSnakeCaseRecord(validated as Record<string, unknown>);
-  const secretValues = validated.docker_compose_raw ? [validated.docker_compose_raw] : undefined;
+  const compose = validated.docker_compose_raw ?? validated.dockerComposeRaw;
+  const secretValues = compose ? [compose] : undefined;
   const data = await client.request('PATCH', `/applications/${uuid}`, { body, secretValues });
   return normalizeOperation(data);
 }

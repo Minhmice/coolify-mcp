@@ -72,7 +72,7 @@ function createToolWrapper(config: AppConfig) {
         const secretValues = getSecretValues ? getSecretValues(args) : [];
         const redacted = redactSecrets(result, [config.token, ...secretValues]);
         return {
-          content: [{ type: 'text' as const, text: JSON.stringify(redacted, null, 2) }],
+          content: [{ type: 'text' as const, text: JSON.stringify(redacted ?? null, null, 2) }],
         };
       } catch (err: unknown) {
         if (err instanceof CoolifyError) {
@@ -436,10 +436,13 @@ export function registerTools(
       dockerComposeRaw: z.string().optional(),
     },
     { destructiveHint: true },
-    wrapHandler(async ({ resourceUuid, confirmResourceUuid, ...rest }) => {
-      assertDeleteConfirmation(resourceUuid, confirmResourceUuid);
-      return updateApplication(client, resourceUuid, rest);
-    }),
+    wrapHandler(
+      async ({ resourceUuid, confirmResourceUuid, ...rest }) => {
+        assertDeleteConfirmation(resourceUuid, confirmResourceUuid);
+        return updateApplication(client, resourceUuid, rest);
+      },
+      (args) => (args.dockerComposeRaw ? [args.dockerComposeRaw] : []),
+    ),
   );
 
   server.tool(
@@ -453,10 +456,13 @@ export function registerTools(
       dockerComposeRaw: z.string().optional(),
     },
     { destructiveHint: true },
-    wrapHandler(async ({ resourceUuid, confirmResourceUuid, ...rest }) => {
-      assertDeleteConfirmation(resourceUuid, confirmResourceUuid);
-      return updateService(client, resourceUuid, rest);
-    }),
+    wrapHandler(
+      async ({ resourceUuid, confirmResourceUuid, ...rest }) => {
+        assertDeleteConfirmation(resourceUuid, confirmResourceUuid);
+        return updateService(client, resourceUuid, rest);
+      },
+      (args) => (args.dockerComposeRaw ? [args.dockerComposeRaw] : []),
+    ),
   );
 
   server.tool(
@@ -550,7 +556,10 @@ export function registerTools(
       environmentName: z.string().optional(),
       dockerComposeRaw: z.string().optional(),
     },
-    wrapHandler(async (args) => createService(client, args)),
+    wrapHandler(
+      async (args) => createService(client, args),
+      (args) => (args.dockerComposeRaw ? [args.dockerComposeRaw] : []),
+    ),
   );
 
   server.tool(
